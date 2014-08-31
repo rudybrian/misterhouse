@@ -16,7 +16,7 @@ use Getopt::Long;
 #print "get_url: @ARGV\n";
 if (!&GetOptions(\%parms, 'h', 'help',
                  'quiet', 'cookies=s', 'cookie_file_in=s', 'cookie_file_out=s', 'post=s', 'header=s',
-                 'userid=s', 'password=s') or
+                 'userid=s', 'password=s', 'content_type=s') or
     !@ARGV or $parms{h} or $parms{help}) {
 
     print<<eof;
@@ -40,6 +40,8 @@ Usage:
 
     -post 'poststr': Makes this a post request with the specified name/value pairs
       as the form data, such as: 'name1=val1&name2=val2'
+    -content_type 'content_type' : override the default 
+      'application/x-www-form-urlencoded' content_type header sent when using POST.
 
     -header 'header_file': HTTP headers from the server are stored in this file
 
@@ -93,7 +95,8 @@ sub use_ua {
     my $request;
     if ($parms{post}) {
       $request = new HTTP::Request('POST' => $url);
-      $request->content_type('application/x-www-form-urlencoded');
+      my $content_type = 'application/x-www-form-urlencoded' unless $parms{content_type};
+      $request->content_type($content_type);
       $request->content($parms{post});
     } else {
       $request = new HTTP::Request('GET', $url);
