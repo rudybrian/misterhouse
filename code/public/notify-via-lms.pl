@@ -3,6 +3,10 @@
 ## Send notifications via JSON interaction with LMS
 ##
 
+# v0.04 09-16-2014 Brian Rudy (brudyNO@SPAMpraecogito.com)
+#	Added support for username/password basic authentication
+#	Added support for HTTPS tunneled connectivity to LMS (no support for mysqueezebox.com yet)
+#	Catch if -player is underfined and not using -sync
 #
 # v0.03 09-15-2014 Brian Rudy (brudyNO@SPAMpraecogito.com)
 # 	Added proper Getopt handling
@@ -54,8 +58,8 @@ use Getopt::Long;
 my %parms;
 if (!&GetOptions(\%parms, 'h', 'help', 'debug', 
 		'player=s', 'username=s', 'password=s', 'sync', 'lmshost=s',
-		'exclude=s@', 'maxplayers=i') or
-	!@ARGV or $parms{h} or $parms{help}) {
+		'exclude=s@', 'maxplayers=i', 'secure') or
+	!@ARGV or $parms{h} or $parms{help} or (!$parms{sync} && !$parms{player})) {
 	
 	print<<eof;
 
@@ -81,6 +85,8 @@ Usage:
 				added to the sync group and playing the notification audio.
 
 	-lmshost 'host:port':	Override the default of localhost:9000
+	-secure:		Use HTTPS instead of HTTP if you are tunelling as described 
+				here: http://wiki.slimdevices.com/index.php/Connecting_remotely 
 
 	-maxplayers 'val':	Override the default of 10 players
 
@@ -230,23 +236,13 @@ if ($parms{sync}) {
 		# determine who should be in the sync group
 		if ($parms{exclude}) {
 			if (scalar grep $players->[$index]{playerid} eq $_, @{$parms{exclude}}) {
-				print "Not clearing sync for " . $players->[$index]{playerid} . 
+				print "Skipping setting restoration for " . $players->[$index]{playerid} . 
 					" since we have been instructed to exclude it.\n" if $parms{debug};
 				next;
 			}
 		}
-		# Break sync
+		# Restore sync state
 		parse_json_response(post_to_lms($players->[$index]{playerid}, '"sync","-"'));
-	}
-	for my $index (0 .. $#{$players}) {
-		if ($parms{exclude}) {
-			if (scalar grep $players->[$index]{playerid} eq $_, @{$parms{exclude}}) {
-				print "Skipping settings restoration for " . $players->[$index]{playerid} . 
-					" since we have been instructed to exclude it.\n" if $parms{debug};
-				next;
-			}
-		}
-		# Restore sync to state it was in before the notification playback
 		if ($players->[$index]{sync_master}) {
 			parse_json_response(post_to_lms($players->[$index]{sync_master}, '"sync","' . $players->[$index]{playerid} . '"'));
 		}
@@ -365,12 +361,18 @@ sub parse_json_response {
 # Send the command to the LMS server
 sub post_to_lms {
 	my ($client_id, $command) = @_;
-	my $json_url = "http://" . $parms{lmshost} . "/jsonrpc.js";
+	my $url_prefix = "http";
+	$url_prefix = "https" if $parms{secure};
+	my $json_url = "$url_prefix://" . $parms{lmshost} . "/jsonrpc.js";
 	# download the json page:
 	print "Getting json $json_url\n" if $parms{debug};
 	my $request = new HTTP::Request('POST' => $json_url);
+
+	if ($parms{username} && $parms{password}) {
+		$request->authorization_basic($parms{username}, $parms{password});
+	}
+
 	$request->content_type("text/json");
-	
 	my $rjson = "{\"id\":1,\"method\":\"slim.request\",\"params\":[\"$client_id\",[$command]]}";
 	$request->content($rjson);
 
