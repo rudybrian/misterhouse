@@ -3,6 +3,9 @@
 ## Send notifications via JSON interaction with LMS
 ##
 
+# v0.05 11-15-2014 Brian Rudy (brudyNO@SPAMpraecogito.com)
+#	Fixed issue where restoration of sync state after playback wouldn't always work properly
+#
 # v0.04 09-16-2014 Brian Rudy (brudyNO@SPAMpraecogito.com)
 #	Added support for username/password basic authentication
 #	Added support for HTTPS tunneled connectivity to LMS (no support for mysqueezebox.com yet)
@@ -233,7 +236,17 @@ if ($notification_duration == 0) {
 # Restore the previous states
 if ($parms{sync}) {
 	for my $index (0 .. $#{$players}) {
-		# determine who should be in the sync group
+		if ($parms{exclude}) {
+			if (scalar grep $players->[$index]{playerid} eq $_, @{$parms{exclude}}) {
+				print "Not clearing sync for " . $players->[$index]{playerid} . 
+					" since we have been instructed to exclude it.\n" if $parms{debug};
+				next;
+			}
+		}
+		# Break sync
+		parse_json_response(post_to_lms($players->[$index]{playerid}, '"sync","-"'));
+	}
+	for my $index (0 .. $#{$players}) {
 		if ($parms{exclude}) {
 			if (scalar grep $players->[$index]{playerid} eq $_, @{$parms{exclude}}) {
 				print "Skipping setting restoration for " . $players->[$index]{playerid} . 
@@ -242,7 +255,6 @@ if ($parms{sync}) {
 			}
 		}
 		# Restore sync state
-		parse_json_response(post_to_lms($players->[$index]{playerid}, '"sync","-"'));
 		if ($players->[$index]{sync_master}) {
 			parse_json_response(post_to_lms($players->[$index]{sync_master}, '"sync","' . $players->[$index]{playerid} . '"'));
 		}
