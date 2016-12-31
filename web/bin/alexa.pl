@@ -156,6 +156,33 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
         $response .= encode_json $response_data;
         return $response;
     }
+    elsif (
+        $json_text->{"header"}->{"namespace"} eq "Alexa.ConnectedHome.System" )
+    {
+        if ( $json_text->{"header"}->{"name"} eq "HealthCheckRequest" ) {
+            my $response_data = {
+                header => {
+                    messageId      => lc( $guid->as_string ),
+                    name           => "HealthCheckResponse",
+                    namespace      => "Alexa.ConnectedHome.System",
+                    payloadVersion => "2"
+                },
+                payload => {
+                    description => "The system is currently healthy",
+                    isHealthy   => JSON::true
+                }
+            };
+
+            # Roll up the resoponse and send it back to Amazon
+            my $response = "HTTP/1.0 200 OK\n";
+            $response .= "Content-Type: application/json\n\n";
+            $response .= encode_json $response_data;
+            return $response;
+        }
+        else {
+            # Not sure what this is. Generate an error.
+        }
+    }
     else {
         # We have received something unexpected. Generate an error
     }
