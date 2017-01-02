@@ -126,12 +126,10 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
             $response_data->{"header"}->{"name"} = "TurnOffConfirmation";
         }
         elsif ( $reqname eq "SetPercentageRequest" ) {
-
             # First check if we support percentage requests
             my ( $can_onoff, $can_percent ) = checkSupportedStates($obj);
             if ($can_percent) {
-
-                # Find the nearest available percentage state
+                # Set the object to the nearest available percentage state
                 set $obj &findNearestPercent( $obj,
                     $json_text->{"payload"}->{"percentageState"}->{"value"} );
                 $response_data->{"header"}->{"name"} =
@@ -142,8 +140,32 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
             }
         }
         elsif ( $reqname eq "IncrementPercentageRequest" ) {
+            # First check if we support percentage requests
+            my ( $can_onoff, $can_percent ) = checkSupportedStates($obj);
+            if ($can_percent) {
+                # Set the object to the nearest available percentage state
+                set $obj &findNearestPercent( $obj,
+                    "+" . $json_text->{"payload"}->{"deltaPercentage"}->{"value"} );
+                $response_data->{"header"}->{"name"} =
+                  "IncrementPercentageConfirmation";
+            }
+            else {
+                # This device is unable to do percent requests, generate an error
+            }
         }
         elsif ( $reqname eq "DecrementPercentageRequest" ) {
+            # First check if we support percentage requests
+            my ( $can_onoff, $can_percent ) = checkSupportedStates($obj);
+            if ($can_percent) {
+                # Set the object to the nearest available percentage state
+                set $obj &findNearestPercent( $obj,
+                    "-" . $json_text->{"payload"}->{"deltaPercentage"}->{"value"} );
+                $response_data->{"header"}->{"name"} =
+                  "DecrementPercentageConfirmation";
+            }
+            else {
+                # This device is unable to do percent requests, generate an error
+            }
         }
         elsif ( $reqname eq "SetTargetTemperatureRequest" ) {
         }
@@ -196,13 +218,22 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
 # Find the nearest percentage value to that requested
 sub findNearestPercent {
     my ( $obj, $percent ) = @_;
-
-    # convert the given percentage into a decimal
-    $percent = sprintf( "%d", $percent );
     if ( $obj->can('state_level') ) {
+        if ($percent =~ m/^[+-]/g) {
+            $percent += 100 + $obj->state_level();
+        }
+        $percent = sprintf( "%d", $percent );
         return $percent;
     }
     else {
+        if ($percent =~ m/^[+-]/g) {
+            my $current_percent = $obj->state();
+            $current_percent = 100 if ( lc $current_percent eq 'on' );
+            $current_percent = 0   if ( lc $current_percent eq 'off' );
+            $current_percent =~ s/\%//g;
+            $percent += $current_percent;
+        }
+        $percent = sprintf( "%d", $percent );
         my @states         = $obj->get_states();
         my @numeric_states = @states;
         for my $state (@numeric_states) {
