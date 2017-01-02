@@ -54,18 +54,9 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
                 my $object = &get_object_by_name($item);
 
                 next if $object->{hidden};
-                if ( $object->can('state') ) {
-                    my $can_onoff   = 0;
-                    my $can_percent = 0;
-                    my @states      = $object->get_states();
-                    for my $state (@states) {
-                        if ( "on" eq lc($state) ) {
-                            $can_onoff = 1;
-                        }
-                        elsif ( "80\%" eq lc($state) ) {
-                            $can_percent = 1;
-                        }
-                    }
+                if ( $object->can('state') || $object->can('state_level') ) {
+                    my ( $can_onoff, $can_percent ) =
+                      checkSupportedStates($object);
                     my $stripped_appianceId = $object->{object_name};
                     $stripped_appianceId =~ s/\$//g;
                     my $appliance = {
@@ -135,6 +126,20 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
             $response_data->{"header"}->{"name"} = "TurnOffConfirmation";
         }
         elsif ( $reqname eq "SetPercentageRequest" ) {
+
+            # First check if we support percentage requests
+            my ( $can_onoff, $can_percent ) = checkSupportedStates($obj);
+            if ($can_percent) {
+
+                # Find the nearest available percentage state
+                set $obj &findNearestPercent( $obj,
+                    $json_text->{"payload"}->{"percentageState"}->{"value"} );
+                $response_data->{"header"}->{"name"} =
+                  "SetPercentageConfirmation";
+            }
+            else {
+                # This device is unable to do percent requests, generate an error
+            }
         }
         elsif ( $reqname eq "IncrementPercentageRequest" ) {
         }
@@ -186,6 +191,51 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
     else {
         # We have received something unexpected. Generate an error
     }
+}
+
+# Find the nearest percentage value to that requested
+sub findNearestPercent {
+    my ( $obj, $percent ) = @_;
+
+    # convert the given percentage into a decimal
+    $percent = sprintf( "%d", $percent );
+    if ( $obj->can('state_level') ) {
+        return $percent;
+    }
+    else {
+        my @states         = $obj->get_states();
+        my @numeric_states = @states;
+        for my $state (@numeric_states) {
+            $state = 100 if ( lc $state eq 'on' );
+            $state = 0   if ( lc $state eq 'off' );
+            $state =~ s/\%//g;
+        }
+        my $itr = 0;
+        foreach my $number (@numeric_states) {
+            $itr++ and next if $percent >= $number;
+        }
+        return $states[ $itr - 1 ];
+    }
+}
+
+# Check the supported states for the given object
+sub checkSupportedStates {
+    my ($obj)       = @_;
+    my $can_onoff   = 0;
+    my $can_percent = 0;
+    my @states      = $obj->get_states();
+    for my $state (@states) {
+        if ( "on" eq lc($state) ) {
+            $can_onoff = 1;
+        }
+        elsif ( "60\%" eq lc($state) ) {
+            $can_percent = 1;
+        }
+    }
+    if ( $obj->can('state_level') ) {
+        $can_percent = 1;
+    }
+    return $can_onoff, $can_percent;
 }
 
 # Convert the device name into a friendly name
