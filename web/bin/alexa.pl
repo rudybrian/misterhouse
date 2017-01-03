@@ -126,9 +126,11 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
             $response_data->{"header"}->{"name"} = "TurnOffConfirmation";
         }
         elsif ( $reqname eq "SetPercentageRequest" ) {
+
             # First check if we support percentage requests
             my ( $can_onoff, $can_percent ) = checkSupportedStates($obj);
             if ($can_percent) {
+
                 # Set the object to the nearest available percentage state
                 set $obj &findNearestPercent( $obj,
                     $json_text->{"payload"}->{"percentageState"}->{"value"} );
@@ -140,12 +142,16 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
             }
         }
         elsif ( $reqname eq "IncrementPercentageRequest" ) {
+
             # First check if we support percentage requests
             my ( $can_onoff, $can_percent ) = checkSupportedStates($obj);
             if ($can_percent) {
+
                 # Set the object to the nearest available percentage state
                 set $obj &findNearestPercent( $obj,
-                    "+" . $json_text->{"payload"}->{"deltaPercentage"}->{"value"} );
+                    "+"
+                      . $json_text->{"payload"}->{"deltaPercentage"}->{"value"}
+                );
                 $response_data->{"header"}->{"name"} =
                   "IncrementPercentageConfirmation";
             }
@@ -154,12 +160,16 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
             }
         }
         elsif ( $reqname eq "DecrementPercentageRequest" ) {
+
             # First check if we support percentage requests
             my ( $can_onoff, $can_percent ) = checkSupportedStates($obj);
             if ($can_percent) {
+
                 # Set the object to the nearest available percentage state
                 set $obj &findNearestPercent( $obj,
-                    "-" . $json_text->{"payload"}->{"deltaPercentage"}->{"value"} );
+                    "-"
+                      . $json_text->{"payload"}->{"deltaPercentage"}->{"value"}
+                );
                 $response_data->{"header"}->{"name"} =
                   "DecrementPercentageConfirmation";
             }
@@ -219,19 +229,23 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
 sub findNearestPercent {
     my ( $obj, $percent ) = @_;
     if ( $obj->can('state_level') ) {
-        if ($percent =~ m/^[+-]/g) {
+        if ( $percent =~ m/^[+-]/g ) {
             $percent += 100 + $obj->state_level();
+            $percent = 100 if $percent >= 100;
+            $percent = 0   if $percent <= 0;
         }
         $percent = sprintf( "%d", $percent );
         return $percent;
     }
     else {
-        if ($percent =~ m/^[+-]/g) {
+        if ( $percent =~ m/^[+-]/g ) {
             my $current_percent = $obj->state();
             $current_percent = 100 if ( lc $current_percent eq 'on' );
             $current_percent = 0   if ( lc $current_percent eq 'off' );
             $current_percent =~ s/\%//g;
             $percent += $current_percent;
+            $percent = 100 if $percent >= 100;
+            $percent = 0   if $percent <= 0;
         }
         $percent = sprintf( "%d", $percent );
         my @states         = $obj->get_states();
