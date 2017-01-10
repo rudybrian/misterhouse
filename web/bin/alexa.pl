@@ -224,6 +224,49 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
         # We have received something unexpected. Generate an error
     }
 }
+elsif ( $json_text->{"session"}->{"application"}->{"applicationId"} ) {
+    if (
+        $json_text->{"request"}->{"intent"}->{"slots"}->{"command"}->{"value"} )
+    {
+        my $cmd1 =
+          &phrase_match1(
+            $json_text->{"request"}->{"intent"}->{"slots"}->{"command"}
+              ->{"value"} );
+        &process_external_command( $cmd1, 1, 'alexa', 'speak' );
+    }
+
+    my $response_data = {
+        version           => "Ver-$module_version",
+        sessionAttributes => { blahblah => { something => "interesting" } },
+        response          => {
+            outputSpeech => {
+                type => "PlainText",
+                text => "string"
+            },
+            card => {
+                type    => "Simple",
+                title   => "string",
+                content => "string"
+            },
+            reprompt => {
+                outputSpeech => {
+                    type => "PlainText",
+                    text => ""
+                }
+            },
+            shouldEndSession => JSON::true
+        }
+    };
+
+    # Roll up the resoponse and send it back to Amazon
+    my $response = "HTTP/1.0 200 OK\n";
+    $response .= "Content-Type: application/json\n\n";
+    $response .= encode_json $response_data;
+    return $response;
+}
+else {
+    # We have received something unexpected. Generate an error
+}
 
 # Find the nearest percentage value to that requested
 sub findNearestPercent {
