@@ -10,23 +10,30 @@
 
 use vars qw(%Http $HTTP_BODY $HTTP_REQUEST %HTTP_ARGV);
 
-use JSON-support_by_pp;
+use JSON::XS qw//;
 use Data::GUID;
+#use Data::Dumper;
 use strict;
 
 my $list_name      = "Lights";
-my $module_version = "0.1";
+my $module_version = "0.2";
 
 #my $results = "$ENV{HTTP_QUERY_STRING}\n";
+#my $results = Dumper(%Http);
+#my $results = Dumper($HTTP_BODY);
+#my $results = Dumper(%ENV);
 
-# We should make sure we have received something JSON in the POST body before continuing
+#open (FH, '>', "/var/tmp/query_string.txt") or die $!;
+#print FH $results;
+#close(FH);
 
-my $json = new JSON;
-
-# these are some nice json options to relax restrictions a bit:
-my $json_text =
-  $json->allow_nonref->utf8->relaxed->escape_slash->loose->allow_singlequote
-  ->allow_barekey->decode( $ENV{HTTP_QUERY_STRING} );
+my $json_text;
+eval {$json_text = JSON::XS->new->decode( $HTTP_BODY ); };
+#catch crashes
+if ($@) {
+    main::print_log("ERROR! JSON parser crashed! $@");
+    return('0');
+}
 
 my $guid = Data::GUID->new;
 
@@ -96,7 +103,7 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
 
             my $response = "HTTP/1.0 200 OK\n";
             $response .= "Content-Type: application/json\n\n";
-            $response .= encode_json $response_data;
+            $response .= JSON::XS::encode_json $response_data;
             return $response;
         }
     }
@@ -190,7 +197,7 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
         # Roll up the resoponse and send it back to Amazon
         my $response = "HTTP/1.0 200 OK\n";
         $response .= "Content-Type: application/json\n\n";
-        $response .= encode_json $response_data;
+        $response .= JSON::XS::encode_json $response_data;
         return $response;
     }
     elsif (
@@ -213,7 +220,7 @@ if ( defined $json_text->{"header"}->{"namespace"} ) {
             # Roll up the resoponse and send it back to Amazon
             my $response = "HTTP/1.0 200 OK\n";
             $response .= "Content-Type: application/json\n\n";
-            $response .= encode_json $response_data;
+            $response .= JSON::XS::encode_json $response_data;
             return $response;
         }
         else {
@@ -241,12 +248,12 @@ elsif ( $json_text->{"session"}->{"application"}->{"applicationId"} ) {
         response          => {
             outputSpeech => {
                 type => "PlainText",
-                text => "string"
+                text => "Ok"
             },
             card => {
                 type    => "Simple",
-                title   => "string",
-                content => "string"
+                title   => "Running MisterHouse voice command",
+                content => $json_text->{"request"}->{"intent"}->{"slots"}->{"command"}->{"value"}
             },
             reprompt => {
                 outputSpeech => {
@@ -261,7 +268,7 @@ elsif ( $json_text->{"session"}->{"application"}->{"applicationId"} ) {
     # Roll up the resoponse and send it back to Amazon
     my $response = "HTTP/1.0 200 OK\n";
     $response .= "Content-Type: application/json\n\n";
-    $response .= encode_json $response_data;
+    $response .= JSON::XS::encode_json $response_data;
     return $response;
 }
 else {
