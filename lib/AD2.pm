@@ -200,8 +200,7 @@ original code design.
 
 =cut
 
-sub restore_string
-{
+sub restore_string {
 	my ($self) = @_;
 	# Do the normal restore_string
 	my $restore_string = $self->SUPER::restore_string();
@@ -209,11 +208,9 @@ sub restore_string
 	for my $partition (keys %{$$self{partition_address}}){
 	   for my $zone (keys %{$$self{$partition}{zone_status}}){
 	      my $status = $$self{$partition}{zone_status}{$zone};
-	      $restore_string .= $self->{object_name} 
-	         . "->ChangeZoneState($zone, q~$status~, 0);\n";
+	      $restore_string .= $self->{object_name} . "->ChangeZoneState($zone, q~$status~, 0);\n";
 	      my $bypass = $$self{$partition}{zone_bypass}{$zone};
-	      $restore_string .= $self->{object_name} 
-	         . "->zone_bypassed($zone, $bypass);\n";	      
+	      $restore_string .= $self->{object_name} . "->zone_bypassed($zone, $bypass);\n";	      
 	   }
 	}
 	return $restore_string;
@@ -270,8 +267,7 @@ sub read_parms{
                }
                else {
                   my ($sensortype, $ZoneLoop) = split("", $wnum);
-                  $$self{wireless}{"$rf_id.$ZoneLoop.$sensortype"} 
-                     = $ZoneNum;
+                  $$self{wireless}{"$rf_id.$ZoneLoop.$sensortype"} = $ZoneNum;
                }
                $lc++;
             }
@@ -319,7 +315,7 @@ sub init {
    $serial_port->stopbits(1);
    $serial_port->handshake('none');
    $serial_port->datatype('raw');
-   $serial_port->dtr_active(1);
+   $serial_port->dtr_active(1) or warn "Could not set dtr_active(1)";
    $serial_port->rts_active(0);
 
    select( undef, undef, undef, .100 );    # Sleep a bit
@@ -342,7 +338,7 @@ sub serial_startup {
       $BaudRate = ( defined $::config_parms{$instance . '_baudrate'} ) ? $::config_parms{"$instance" . '_baudrate'} : 115200;
       if ( &main::serial_port_create( $instance, $port, $BaudRate, 'none', 'raw' ) ) {
          init( $::Serial_Ports{$instance}{object}, $port );
-         ::print_log("[AD2] initializing $instance on port $port at $BaudRate baud") if $main::Debug{'AD2'};
+         ::print_log("[AD2] initializing $instance on port $port at $BaudRate baud") if $main::Debug{'ad2'};
          ::MainLoop_pre_add_hook( sub {AD2::check_for_data($instance, 'serial');}, 1 ) if $main::Serial_Ports{"$instance"}{object};
       }
    }
@@ -360,7 +356,7 @@ sub server_startup {
    $Socket_Items{"$instance"}{recon_timer} = ::Timer::new();
    my $ip = $::config_parms{"$instance".'_server_ip'};
    my $port = $::config_parms{"$instance" . '_server_port'};
-   ::print_log("  AD2.pm initializing $instance TCP session with $ip on port $port") if $main::Debug{'AD2'};
+   ::print_log("  AD2.pm initializing $instance TCP session with $ip on port $port") if $main::Debug{'ad2'};
    $Socket_Items{"$instance"}{'socket'} = new Socket_Item($instance, undef, "$ip:$port", $instance, 'tcp', 'raw');
    $Socket_Items{"$instance" . '_sender'}{'socket'} = new Socket_Item($instance . '_sender', undef, "$ip:$port", $instance . '_sender', 'tcp', 'rawout');
    $Socket_Items{"$instance"}{'socket'}->start;
@@ -429,7 +425,7 @@ sub check_for_data {
       if (substr($Cmd, -1) eq "\r"){
          # Valid Message, Strip off last line ending
          $Cmd = substr($Cmd, 0, -1);
-         ::print_log("[AD2] " . $Cmd) if $main::Debug{AD2} >= 1;
+         ::print_log("[AD2] " . $Cmd) if $main::Debug{'ad2'} >= 1;
 
          # Get the Message Type, and Ignore Duplicate Status Messages
          my $status_type = $self->GetStatusType($Cmd);
@@ -588,12 +584,13 @@ sub CheckCmd {
          .")" );
 
       foreach my $rf_key (keys %{$$self{wireless}}){
-         if ($rf_key =~ /^${rf_id}\.?(.*)/) {
+         if ($rf_key =~ /^$rf_id\.?(.*)/) {
             my $LoopNum = 1;
             my $SensorType = 's';
-            ($LoopNum, $SensorType) = split('.', $1);
+	    my $Loopmap = $1;
+	    if ($Loopmap =~ /(\d{1,3})\.(\w{1})$/) { $LoopNum = $1; $SensorType = $2 }
+            if ($Loopmap =~ /^(\d{1,3})$/) { $LoopNum = $1 } 
             my $ZoneNum = $$self{wireless}{$rf_key};
-
             my $ZoneStatus = "ready";
             if ($status_type->{rf_low_batt} == "1") {
                $ZoneStatus = "low battery";
@@ -683,34 +680,35 @@ sub CheckCmd {
       # ARMED AWAY
       if ( $status_type->{armed_away_flag}) {
          # TODO The setting of modes needs to be done on partitions
-         my $mode = "armed away - error";
-         if (index($status_type->{alphanumeric}, "ALL SECURE")) {
+            $mode = "armed away - error";
+         if (index($status_type->{alphanumeric}, "ALL SECURE") >= 1) {
             $mode = "armed away";
          }
-         elsif (index($status_type->{alphanumeric}, "You may exit now")) {
+         elsif (index($status_type->{alphanumeric}, "You may exit now") >= 1) {
             $mode = "exit delay";
          }
-         elsif (index($status_type->{alphanumeric}, "or alarm occurs")) {
+         elsif (index($status_type->{alphanumeric}, "or alarm occurs") >= 1) {
             $mode = "entry delay";
          }
-         elsif (index($status_type->{alphanumeric}, "ZONE BYPASSED")) {
+         elsif (index($status_type->{alphanumeric}, "ZONE BYPASSED") >= 1) {
             $mode = "armed away - bypass";
          }
       }
 
       # ARMED HOME
+	$self->debug_log("armed_home_flag = ". $status_type->{armed_home_flag} ." Alpha status = ". $status_type->{alphanumeric} . "| stay = ". index($status_type->{alphanumeric}, "***STAY***") . " exit delay = ". index($status_type->{alphanumeric}, "You may exit now") . "entry delay = ". index($status_type->{alphanumeric}, "or alarm occurs") );
       if ( $status_type->{armed_home_flag}) {
          $mode = "armed stay - error";
-         if (index($status_type->{alphanumeric}, "You may exit now")) {
+         if (index($status_type->{alphanumeric}, "You may exit now") >= 1) {
             $mode = "exit delay";
          }
-         elsif (index($status_type->{alphanumeric}, "or alarm occurs")) {
+         elsif (index($status_type->{alphanumeric}, "or alarm occurs") >= 1) {
             $mode = "entry delay";
          }
-         elsif (index($status_type->{alphanumeric}, "ZONE BYPASSED")) {
+         elsif (index($status_type->{alphanumeric}, "ZONE BYPASSED") >= 1) {
             $mode = "armed stay - bypass";
          }
-         elsif (index($status_type->{alphanumeric}, "***STAY***")) {
+         elsif (index($status_type->{alphanumeric}, "***STAY***") >= 1) {
             $mode = "armed stay";
          }
       }
@@ -767,7 +765,9 @@ sub CheckCmd {
          $mode = "battery low";
          $self->debug_log("Panel is low on battery");;
       }
+
       if ($mode ne $self->state && $mode ne ''){
+	 $self->debug_log("Setting system state to >>>>> $mode");
          $self->set_receive($mode);
       }
    }
@@ -788,7 +788,7 @@ sub GetStatusType {
    $message{cmd} = $AdemcoStr;
 
    # Panel Message Format
-   if ($AdemcoStr =~ /(!KPM:)?\[([\d-]*)\],(\d{3}),\[(.*)\],\"(.*)\"/) {
+   if ($AdemcoStr =~ /(!KPM:)?\[([\dABCDEF\-]*)\],(\d{3}),\[(.*)\],\"(.*)\"/) {
       $message{keypad} = 1;
 
       # Parse The Cmd into Message Parts
@@ -813,6 +813,7 @@ sub GetStatusType {
       }
       #Place message in partition if address is equal to partition, or no 
       #address is specified (system wide messages).
+	$self->debug_log(">>> Message is for Partition address: ". @addresses );
       foreach my $partition (keys %{$$self{partition_address}}){
          my $part_addr = $$self{partition_address}{$partition};
          if (grep($part_addr, @addresses) || 
@@ -852,7 +853,7 @@ sub GetStatusType {
          $message{status} = 1;
       }
    }
-   elsif ($AdemcoStr =~ /!RFX:(\d{7}),(\d{2})/) {
+   elsif ($AdemcoStr =~ /!RFX:(\d{7}),(\w{2})/) {
       $self->debug_log("Wireless status received.");
       $message{wireless} = 1;
       $message{rf_id} = $1;
@@ -931,8 +932,7 @@ sub ChangeZoneState {
       #  Log everything if requested
       if ($log == 1) {
          my $ZoneNumPadded = sprintf("%03d", $zone);
-         $self->debug_log( "Zone $zone (".$self->zone_name($zone)
-            .") changed to '$new_status'" );
+         $self->debug_log( "Zone $zone (".$self->zone_name($zone).") changed to '$new_status'" );
       }
    }
 }
@@ -991,15 +991,15 @@ sub DefineCmdMsg {
    my ($self) = @_;
    my $instance = $self->{instance};
    my %Return_Hash = (
-      "Disarm"          => $Configuration{$instance."_user_master_code"}."1",
-      "ArmAway"         => $Configuration{$instance."_user_master_code"}."2",
-      "ArmStay"         => $Configuration{$instance."_user_master_code"}."3",
-      "ArmAwayMax"      => $Configuration{$instance."_user_master_code"}."4",
-      "Test"            => $Configuration{$instance."_user_master_code"}."5",
-      "Bypass"          => $Configuration{$instance."_user_master_code"}."6#",
-      "ArmStayInstant"  => $Configuration{$instance."_user_master_code"}."7",
-      "Code"            => $Configuration{$instance."_user_master_code"}."8",
-      "Chime"           => $Configuration{$instance."_user_master_code"}."9",
+      "Disarm"          => $::config_parms{$instance."_user_master_code"}."1",
+      "ArmAway"         => $::config_parms{$instance."_user_master_code"}."2",
+      "ArmStay"         => $::config_parms{$instance."_user_master_code"}."3",
+      "ArmAwayMax"      => $::config_parms{$instance."_user_master_code"}."4",
+      "Test"            => $::config_parms{$instance."_user_master_code"}."5",
+      "Bypass"          => $::config_parms{$instance."_user_master_code"}."6#",
+      "ArmStayInstant"  => $::config_parms{$instance."_user_master_code"}."7",
+      "Code"            => $::config_parms{$instance."_user_master_code"}."8",
+      "Chime"           => $::config_parms{$instance."_user_master_code"}."9",
       "ToggleVoice"     => '#024',
       "ShowFaults"      => "*",
       "AD2Reboot"       => "=",
@@ -1007,30 +1007,30 @@ sub DefineCmdMsg {
    );
 
    my $two_digit_zone;
-   foreach my $key (keys %Configuration) {
+   foreach my $key (keys %::config_parms) {
       #Create Commands for Relays
       if ($key =~ /^${instance}_output_(\D+)_(\d+)$/){
          if ($1 eq 'co') {
-            $Return_Hash{$Configuration{$key}."c"} = $Configuration{$instance."_user_master_code"}."#70$2";
-            $Return_Hash{$Configuration{$key}."o"} = $Configuration{$instance."_user_master_code"}."#80$2";
+            $Return_Hash{$::config_parms{$key}."c"} = $::config_parms{$instance."_user_master_code"}."#70$2";
+            $Return_Hash{$::config_parms{$key}."o"} = $::config_parms{$instance."_user_master_code"}."#80$2";
          }
          elsif ($1 eq 'oc') {
-            $Return_Hash{$Configuration{$key}."o"} = $Configuration{$instance."_user_master_code"}."#80$2";
-            $Return_Hash{$Configuration{$key}."c"} = $Configuration{$instance."_user_master_code"}."#70$2";
+            $Return_Hash{$::config_parms{$key}."o"} = $::config_parms{$instance."_user_master_code"}."#80$2";
+            $Return_Hash{$::config_parms{$key}."c"} = $::config_parms{$instance."_user_master_code"}."#70$2";
          }
          elsif ($1 eq 'o') {
-            $Return_Hash{$Configuration{$key}."o"} = $Configuration{$instance."_user_master_code"}."#80$2";
+            $Return_Hash{$::config_parms{$key}."o"} = $::config_parms{$instance."_user_master_code"}."#80$2";
          }
          elsif ($1 eq 'c') {
-            $Return_Hash{$Configuration{$key}."c"} = $Configuration{$instance."_user_master_code"}."#70$2";
+            $Return_Hash{$::config_parms{$key}."c"} = $::config_parms{$instance."_user_master_code"}."#70$2";
          }
       }
       #Create Commands for Zone Expanders
       elsif ($key =~ /^${instance}_expander_(\d+)$/) {
-         $two_digit_zone = substr($Configuration{$key}, 1); #Trim leading zero
-         $Return_Hash{"exp".$Configuration{$key}."c"} = "L$two_digit_zone"."0";
-         $Return_Hash{"exp".$Configuration{$key}."f"} = "L$two_digit_zone"."1";
-         $Return_Hash{"exp".$Configuration{$key}."p"} = "L$two_digit_zone"."2"; 
+         $two_digit_zone = substr($::config_parms{$key}, 1); #Trim leading zero
+         $Return_Hash{"exp".$::config_parms{$key}."c"} = "L$two_digit_zone"."0";
+         $Return_Hash{"exp".$::config_parms{$key}."f"} = "L$two_digit_zone"."1";
+         $Return_Hash{"exp".$::config_parms{$key}."p"} = "L$two_digit_zone"."2";
       }
    }
 
@@ -1041,10 +1041,10 @@ sub output_cmd {
    my ($self, $cmd, $output) = @_;
    my $instance = $self->{instance};
    if ($cmd =~ /start/i){
-      $Configuration{$instance."_user_master_code"}."#7$output";
+      $Configuration{$instance."_user_master_code"}."#8$output";
    }
    else {
-      $Configuration{$instance."_user_master_code"}."#8$output";
+      $Configuration{$instance."_user_master_code"}."#7$output";
    }
 }
 
@@ -1136,7 +1136,7 @@ sub cmd {
       }
    }
    else {
-      $main::Serial_Ports{$instance}{'socket'}->write("$CmdStr");
+      $main::Serial_Ports{$instance}{object}->write("$CmdStr");
    }
    return "Sending to ADEMCO panel: $CmdName ($cmd)";
 }
@@ -1150,7 +1150,7 @@ Used to send commands to the interface.
 sub set {
    my ($self, $p_state, $p_setby, $p_response) = @_;
    my $instance = $$self{instance};
-   $p_state = lc($p_state);
+   ## W.G. Doesn't match hash key ## $p_state = lc($p_state);
    my $cmd = ( exists $self->{CmdMsg}->{$p_state} ) ? $self->{CmdMsg}->{$p_state} : $p_state;
    $self->debug_log(">>> Sending to ADEMCO panel              $p_state ($cmd)");
    $self->{keys_sent} = $self->{keys_sent} + length($cmd);
@@ -1169,7 +1169,7 @@ sub set {
       }
    }
    else {
-      $main::Serial_Ports{$instance}{'socket'}->write("$cmd");
+      $main::Serial_Ports{$instance}{object}->write("$cmd");
    }
    return;
 }
@@ -1515,8 +1515,7 @@ type is the letter k.
 
 =cut
 
-sub new
-{
+sub new {
    my ($class,$type,$interface,$zone,$partition,$expander,$relay,$wireless) = @_;
 
    my $self = new Generic_Item();
@@ -1539,14 +1538,13 @@ Sets the object's state.
 
 =cut
 
-sub set
-{
+sub set {
    my ($self,$p_state,$p_setby) = @_;
 
       if (ref $p_setby and $p_setby->can('get_set_by')) {
-         ::print_log("AD2_Item($$self{object_name})::set($p_state, $p_setby): $$p_setby{object_name} was set by " . $p_setby->get_set_by) if $main::Debug{AD2};
+         ::print_log("AD2_Item($$self{object_name})::set($p_state, $p_setby): $$p_setby{object_name} was set by " . $p_setby->get_set_by) if $main::Debug{'ad2'};
       } else {
-         ::print_log("AD2_Item($$self{object_name})::set($p_state, $p_setby)") if $main::Debug{AD2};
+         ::print_log("AD2_Item($$self{object_name})::set($p_state, $p_setby)") if $main::Debug{'ad2'};
       }
 
       if ($p_state =~ /^fault/) {
@@ -1735,8 +1733,7 @@ addresses, only ONE address is needed in $address.
 
 =cut
 
-sub new
-{
+sub new {
    my ($class,$interface, $partition, $address) = @_;
    my $self = new Generic_Item();
    bless $self,$class;
@@ -1744,8 +1741,7 @@ sub new
    $$interface{partition_address}{$partition} = $address;
    $interface->register($self,$partition);
    $$self{interface} = $interface;
-   @{$$self{states}} = ('Disarm', 'ArmAway','ArmStay','ArmAwayMax','Test','Bypass',
-        'ArmStayInstant','Code','Chime','ToggleVoice');
+   @{$$self{states}} = ('Disarm', 'ArmAway','ArmStay','ArmAwayMax','Test','Bypass','ArmStayInstant','Code','Chime','ToggleVoice');
    return $self;
 }
 
@@ -1758,9 +1754,8 @@ sub set {
 		}
 	}
 	if ($found_state){
-		::print_log("[AD2::Partition] Received request to "
-			. $p_state . " for partition " . $self->get_object_name);
-		$$self{interface}->cmd($p_state);
+		::print_log("[AD2::Partition] Received request to ". $p_state . " for partition " . $self->get_object_name);
+		$$self{interface}->set($p_state);
 	}
 	else {
 	   $$self{interface}->set($p_state);   
@@ -1839,8 +1834,7 @@ package AD2_Output;
 
 =cut
 
-sub new
-{
+sub new {
    my ($class,$interface,$output) = @_;
 
    my $self = new Generic_Item();
@@ -1862,19 +1856,18 @@ Sets the object's state.
 
 =cut
 
-sub set
-{
+sub set {
    my ($self,$p_state,$p_setby) = @_;
 
       if (ref $p_setby and $p_setby->can('get_set_by')) {
-         ::print_log("AD2_Output($$self{object_name})::set($p_state, $p_setby): $$p_setby{object_name} was set by " . $p_setby->get_set_by) if $main::Debug{AD2};
+         ::print_log("AD2_Output($$self{object_name})::set($p_state, $p_setby): $$p_setby{object_name} was set by " . $p_setby->get_set_by) if $main::Debug{'ad2'};
       } else {
-         ::print_log("AD2_Output($$self{object_name})::set($p_state, $p_setby)") if $main::Debug{AD2};
+         ::print_log("AD2_Output($$self{object_name})::set($p_state, $p_setby)") if $main::Debug{'ad2'};
       }
       my $reported_state;
       if ($p_state =~ /^start/i || $p_state =~ /^stop/i) {
          $reported_state = $p_state;
-         $$self{interface}->output_cmd($p_state, $$self{output});
+         $$self{interface}->set(($$self{interface}->output_cmd($p_state, $$self{output})));
       } 
       else {
          # This may be an attempt to send the alarm code, not sure if this is
