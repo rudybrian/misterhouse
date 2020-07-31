@@ -8,17 +8,23 @@
 # v0.1 10-02-2014 (brudyNO@SPAMpraecogito.com)
 # 	First working version.
 #
+# v0.2 07-30-2020 (brudyNO@SPAMpraecogito.com)
+#       Replaced PP JSON with JSON::XS to prevent issues.
 
-use JSON -support_by_pp;
+use vars qw($HTTP_BODY);
+
+use JSON::XS qw//;
 
 # Send a 200 if things worked, otherwise give an error.
 my $results;
+my $json_text;
 
-$results .= "$ENV{HTTP_QUERY_STRING}\n";
-
-my $json = new JSON;
-# these are some nice json options to relax restrictions a bit:
-my $json_text = $json->allow_nonref->utf8->relaxed->escape_slash->loose->allow_singlequote->allow_barekey->decode($ENV{HTTP_QUERY_STRING});
+eval {$json_text = JSON::XS->new->decode( $HTTP_BODY ); };
+#catch crashes
+if ($@) {
+    main::print_log("ERROR! JSON parser crashed! $@");
+    return('0');
+}
 
 if (defined $json_text->{"GreenBeanify"}) {
 	# This is the data we are looking for, now do something with it.
